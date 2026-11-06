@@ -1,0 +1,669 @@
+@font-face {
+  font-family: "DirtyStains";
+  src: url("./fonts/DirtyStains.otf") format("opentype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+* {box-sizing:border-box}
+html,body,#root {width:100%;height:100%;margin:0}
+.website {position:relative;width:100vw;height:100vh;background:#000;overflow:hidden}
+.website canvas {display:block;width:100%;height:100%;touch-action:none}
+body, .website, button, input, select, textarea, label {font-family:"DirtyStains",sans-serif}
+
+/* The SVG scribble is the ONLY button background. */
+.tool-button,.light-button,.circle-node,.light-hub {
+  position:relative;display:flex;align-items:center;justify-content:center;
+  padding:0;background:transparent!important;border:0!important;
+  border-radius:50%;box-shadow:none!important;overflow:visible;
+  color:#080808;cursor:pointer;isolation:isolate;
+}
+.tool-button {width:80px;height:80px}
+.tool-button.square {border-radius:50%}
+.light-button,.circle-node {width:72px;height:72px}
+.tool-button:hover,.light-button:hover,.circle-node:hover {filter:brightness(1.12)}
+.tool-button.active,.choice-node.selected {filter:drop-shadow(0 0 5px #ffffff66)}
+.tool-button > svg:not(.scribble-ring) {width:40px;height:40px;position:relative;z-index:3}
+
+/* Dense white lines behind the black icons; no circular panel. */
+.scribble-ring {
+  position:absolute;inset:-12%;width:124%;height:124%;
+  color:white;overflow:visible;pointer-events:none;z-index:0;
+  animation:scribble-drift 35s linear infinite;
+}
+.scribble-ring path {stroke-linecap:round;stroke-linejoin:round}
+@keyframes scribble-drift {to {transform:rotate(360deg)}}
+
+.toolbar {position:absolute;top:50%;left:34px;transform:translateY(-50%);display:flex;flex-direction:column;align-items:center;gap:40px;z-index:30}
+.tool-wrapper {position:relative}
+.draw-button {cursor:ew-resize;touch-action:none;user-select:none}
+.brush-icon-wrapper {position:relative;z-index:3;width:40px;height:40px;display:flex;align-items:center;justify-content:center;pointer-events:none;transition:transform .08s linear}
+.draw-icon {display:block;width:40px;height:40px;border:3px solid currentColor;border-radius:50%;pointer-events:none}
+.tool-button.active .draw-icon {background:#080808}
+
+/* Light hub appears only on mesh hover (controlled by App.jsx). */
+.light-hub {position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:44px;height:44px;z-index:26;animation:hub-appear .2s ease-out both}
+.light-hub:hover,.light-hub.hub-open {filter:drop-shadow(0 0 5px #fff8)}
+.hub-center,.fill-icon,.node-content,.color-dot {position:relative;z-index:3;pointer-events:none}
+.hub-center,.fill-icon {display:flex;align-items:center;justify-content:center}
+.hub-center svg {width:23px;height:23px}
+@keyframes hub-appear {from {opacity:0;transform:translate(-50%,-50%) scale(.65)}to {opacity:1;transform:translate(-50%,-50%) scale(1)}}
+
+/* Preserve power display as a subtle CLIP of the scribble itself,
+   not a rectangular white or gray fill. */
+.power-fill-clip,.power-fill {display:none}
+.fill-button {touch-action:none;user-select:none}
+.fill-icon {color:#080808;mix-blend-mode:normal}
+.hdri-button {cursor:ns-resize}
+.light-button {cursor:grab;touch-action:none;user-select:none}
+.light-button:active {cursor:grabbing}
+.light-button .fill-icon svg {width:30px;height:30px}
+.light-control {position:absolute;transform:translate(-50%,-50%);z-index:15;animation:light-appear .3s ease-out both}
+.light-control.expanded {z-index:35}
+@keyframes light-appear {from {opacity:0;scale:.7}to {opacity:1;scale:1}}
+
+/* Expanded nodes are also scribble blobs, not boxes. */
+.node-network {position:absolute;top:50%;left:calc(100% + 42px);transform:translateY(-50%);display:grid;grid-template-columns:repeat(var(--columns),92px);column-gap:16px;row-gap:18px;width:max-content;z-index:40;animation:network-appear .3s ease-out both}
+.node-network.network-left {left:auto;right:calc(100% + 42px)}
+.network-item {position:relative;z-index:1}
+.node-cell {position:relative;width:92px;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center}
+.circle-node {flex-shrink:0;touch-action:none;user-select:none}
+.node-content {font-size:12px;font-weight:700;font-variant-numeric:tabular-nums;text-shadow:0 0 1px #fff}
+.node-label {max-width:100px;min-height:24px;color:#aaa;font-size:10px;line-height:1.2;pointer-events:none}
+.value-node {cursor:ns-resize}
+.color-node {cursor:pointer}
+.color-dot {width:40px;height:40px;border-radius:50%;border:2px solid #111}
+.color-node input[type=color] {position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;z-index:4}
+
+/* Animated scribbled branches */
+.branch-lines {position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none;color:#aaa;z-index:0}
+.scribble-edge {stroke-linecap:round;stroke-linejoin:round;animation:branch-jitter 1s steps(3,end) infinite}
+.scribble-edge:nth-child(2n) {animation-duration:1.2s;animation-delay:-.15s}
+.scribble-edge:nth-child(3n) {animation-duration:1.4s;animation-delay:-.3s}
+@keyframes branch-jitter {0%,100%{transform:translate(0,0)}25%{transform:translate(.75px,-.75px)}50%{transform:translate(-.75px,.75px)}75%{transform:translate(.75px,.4px)}}
+@keyframes network-appear {from{opacity:0;transform:translate(-15px,-50%) scale(.96)}to{opacity:1;transform:translate(0,-50%) scale(1)}}
+
+.reset-mesh-button {position:absolute;bottom:30px;left:34px;height:55px;padding:0 20px;display:flex;align-items:center;justify-content:center;gap:12px;background:#222;color:white;border:1px solid #666;border-radius:15px;font-size:12px;letter-spacing:1px;cursor:pointer;z-index:25}
+.reset-mesh-button:hover {background:#333;border-color:white}
+.reset-mesh-button svg {width:24px;height:24px}
+
+@media(max-width:700px) {
+ .toolbar{left:14px;gap:26px}.tool-button{width:60px;height:60px}
+ .tool-button>svg:not(.scribble-ring),.brush-icon-wrapper,.draw-icon{width:30px;height:30px}
+ .node-network{left:calc(100% + 20px);grid-template-columns:repeat(var(--columns),64px);column-gap:8px;row-gap:10px}
+ .node-network.network-left{left:auto;right:calc(100% + 20px)}
+ .node-cell{width:64px}.circle-node{width:54px;height:54px}
+ .node-content{font-size:10px}.node-label{font-size:9px}.color-dot{width:30px;height:30px}
+ .light-button{width:55px;height:55px}.light-hub{width:38px;height:38px}
+ .reset-mesh-button{left:14px;bottom:18px;padding:0 12px}
+}
+@media(prefers-reduced-motion:reduce) {.scribble-ring,.scribble-edge,.node-network,.light-control,.light-hub{animation:none!important}}
+
+/* Reliable pointer interaction on white scribble buttons */
+.tool-button, .light-button, .hdri-button, .value-node {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+}
+.tool-button *, .light-button * { -webkit-user-drag: none; }
+
+
+/* =====================================
+   DRAG-TO-OPEN IMAGE GALLERY
+===================================== */
+
+.sculpt-gallery {
+  --gallery-width: min(410px, calc(100vw - 68px));
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--gallery-width);
+  z-index: 80;
+  background: #101010;
+  border-left: 1px solid #595959;
+  box-shadow: -12px 0 60px #0009;
+  color: white;
+  transition: transform 360ms cubic-bezier(.22,.78,.2,1);
+  pointer-events: none;
+}
+
+.sculpt-gallery.is-open,
+.sculpt-gallery.is-dragging {
+  pointer-events: auto;
+}
+
+.sculpt-gallery.is-dragging {
+  transition: none;
+}
+
+/* Oversized scribbled arrow: no surrounding button or box. */
+.gallery-handle {
+  position: absolute;
+  top: 50%;
+  left: -96px;
+  transform: translateY(-50%);
+  width: 96px;
+  height: min(74vh, 600px);
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent !important;
+  color: #fff;
+  border: 0 !important;
+  border-radius: 0;
+  box-shadow: none !important;
+  outline-offset: 4px;
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  z-index: 2;
+}
+.gallery-handle:hover,
+.gallery-handle:focus,
+.gallery-handle:active {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+.gallery-handle:active { cursor: grabbing; }
+
+.gallery-arrow {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  animation: gallery-arrow-bounce 1.8s ease-in-out infinite;
+}
+.gallery-arrow-svg {
+  display: block;
+  width: 90px;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  transition: transform 300ms ease;
+}
+.gallery-arrow-line {
+  stroke: currentColor;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.arrow-line-1 {
+  stroke-width: 5.5;
+  animation: gallery-scribble-a 0.65s steps(2, end) infinite;
+}
+.arrow-line-2 {
+  stroke-width: 3.4;
+  opacity: 0.85;
+  animation: gallery-scribble-b 0.8s steps(2, end) infinite;
+}
+.arrow-line-3 {
+  stroke-width: 2.2;
+  opacity: 0.7;
+  animation: gallery-scribble-c 0.95s steps(2, end) infinite;
+}
+.sculpt-gallery.is-open .gallery-arrow-svg {
+  transform: rotate(180deg);
+}
+.sculpt-gallery.is-dragging .gallery-arrow {
+  animation-play-state: paused;
+}
+@keyframes gallery-arrow-bounce {
+  0%, 100% { transform: translateX(3px); }
+  50% { transform: translateX(-13px); }
+}
+@keyframes gallery-scribble-a {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(-1px, 1.2px); }
+}
+@keyframes gallery-scribble-b {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(1.2px, -1px); }
+}
+@keyframes gallery-scribble-c {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(-0.7px, -1.4px); }
+}
+
+.gallery-panel-inner {
+  height: 100%;
+  padding: 32px 22px 30px;
+  overflow-y: auto;
+  scrollbar-color: #555 #111;
+}
+
+.gallery-heading {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  color: #fff;
+  letter-spacing: 1.5px;
+  font-size: 18px;
+  border-bottom: 1px solid #444;
+  padding-bottom: 18px;
+}
+
+.gallery-count { font-size: 11px; color: #aaa; white-space: nowrap; }
+
+.gallery-save {
+  display: block;
+  width: 100%;
+  margin-top: 22px;
+  padding: 15px 12px;
+  background: #fff;
+  border: 1px solid #fff;
+  color: #080808;
+  font-size: 13px;
+  letter-spacing: 1px;
+  cursor: pointer;
+}
+
+.gallery-save:hover { background: #ddd; }
+.gallery-save:disabled { opacity: .55; cursor: wait; }
+.gallery-note { font-size: 11px; color: #aaa; line-height: 1.6; margin: 14px 0 24px; }
+.gallery-error { color: #ff8a8a; font-size: 12px; }
+.gallery-empty { padding: 60px 10px; text-align: center; color: #888; border: 1px dashed #444; font-size: 12px; }
+
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  padding-bottom: 20px;
+}
+
+.gallery-tile {
+  background: #1d1d1d;
+  border: 1px solid #414141;
+  min-width: 0;
+}
+
+.gallery-tile a { display: block; aspect-ratio: 1 / 1; background: #000; overflow: hidden; }
+.gallery-tile img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.gallery-tile-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 7px;
+  font-size: 10px;
+  color: #aaa;
+}
+.gallery-tile-footer button {
+  padding: 5px 3px;
+  border: 0;
+  background: none;
+  color: #ffb5b5;
+  font-size: 10px;
+  cursor: pointer;
+}
+.gallery-tile-footer button:hover { color: white; }
+
+@media (max-width: 700px) {
+  .gallery-panel-inner { padding: 24px 13px; }
+  .gallery-handle { left: -62px; width: 62px; height: min(65vh, 460px); }
+  .gallery-arrow-svg { width: 58px; }
+  .gallery-heading { font-size: 15px; }
+  .gallery-grid { gap: 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gallery-arrow, .gallery-arrow-line { animation: none !important; }
+  .sculpt-gallery { transition-duration: 0ms; }
+}
+
+/* =====================================
+   SCRIBBLED ICON SHAPES
+===================================== */
+
+/* The white SVG scribble stays the background; icons stay black. */
+.draw-icon {
+  display: block;
+  width: 40px;
+  height: 40px;
+  background: #080808;
+  border: 0;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.tool-button.active .draw-icon { background: #080808; }
+
+.main-tool-icon {
+  position: relative;
+  z-index: 3;
+  display: block;
+  width: 40px;
+  height: 40px;
+  color: #080808;
+  pointer-events: none;
+}
+
+/* A slight drawn-by-hand wobble affects the inner cube/hex strokes. */
+.icon-sketch-stroke { transform-origin: 50% 50%; }
+.tool-button:hover .icon-sketch-stroke {
+  animation: icon-pencil-jitter 0.55s steps(3, end) infinite;
+}
+@keyframes icon-pencil-jitter {
+  0%, 100% { transform: translate(0, 0); }
+  33% { transform: translate(0.6px, -0.5px); }
+  66% { transform: translate(-0.5px, 0.6px); }
+}
+
+/* =====================================
+   SUBTLE GLOW + HOVER ENLARGEMENT
+===================================== */
+.tool-button,
+.circle-node,
+.light-button,
+.reset-mesh-button {
+  transform-origin: center;
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+
+/* Low-level glow even when not hovered. */
+.tool-button,
+.circle-node,
+.light-button {
+  filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.23));
+}
+
+.tool-button { transform: scale(1); }
+.tool-button:hover {
+  transform: scale(1.12);
+  filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.63))
+          drop-shadow(0 0 12px rgba(255, 255, 255, 0.24));
+}
+.tool-button.active {
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.5));
+}
+.tool-button.active:hover {
+  filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.75));
+}
+
+.circle-node { transform: scale(1); }
+.circle-node:hover {
+  transform: scale(1.12);
+  filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.6))
+          drop-shadow(0 0 10px rgba(255, 255, 255, 0.22));
+}
+.choice-node.selected {
+  filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.6));
+}
+.choice-node.selected:hover {
+  filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.8));
+}
+
+/* Preserve individual light brightness scaling while enlarging on hover. */
+.light-button {
+  --light-scale: 1;
+  --light-color: #ffffff;
+  transform: scale(var(--light-scale));
+}
+.light-button:hover,
+.light-button:active {
+  transform: scale(calc(var(--light-scale) * 1.13));
+  filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.68))
+          drop-shadow(0 0 12px rgba(255, 255, 255, 0.3));
+}
+
+/* White lights need a dark edge so the sun remains legible on white. */
+.light-colored-icon {
+  color: var(--light-color) !important;
+}
+.light-colored-icon svg {
+  stroke: currentColor;
+  filter: drop-shadow(0 0 1.5px #080808)
+          drop-shadow(0 0 2px var(--light-color));
+}
+.light-button .scribble-ring,
+.light-hub .scribble-ring {
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.55));
+}
+
+/* Hub has an entrance transform animation; animate its inner content instead. */
+.light-hub { filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.35)); }
+.light-hub .hub-center { transition: transform 0.2s ease; }
+.light-hub:hover .hub-center { transform: scale(1.14); }
+.light-hub:hover {
+  filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.7));
+}
+
+.reset-mesh-button { transform-origin: left bottom; }
+.reset-mesh-button:hover {
+  transform: scale(1.07);
+  filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.45));
+}
+
+/* Keep the tall scribble arrow's drag area and bounce animation intact. */
+.gallery-arrow-svg {
+  transition: scale 0.2s ease, filter 0.2s ease;
+  filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.2));
+}
+.gallery-handle:hover .gallery-arrow-svg {
+  scale: 1.07;
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.58));
+}
+
+/* Gallery buttons and image controls respond to hovering as well. */
+.gallery-save,
+.gallery-tile-footer button {
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+.gallery-save:hover,
+.gallery-tile-footer button:hover {
+  transform: scale(1.04);
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.45));
+}
+
+@media (max-width: 700px) {
+  .draw-icon, .main-tool-icon { width: 30px; height: 30px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tool-button, .circle-node, .light-button, .reset-mesh-button,
+  .light-hub .hub-center, .gallery-arrow-svg, .gallery-save,
+  .gallery-tile-footer button { transition: none !important; }
+  .icon-sketch-stroke { animation: none !important; }
+}
+
+/* =====================================
+   NESTED MATERIAL COLOR CONTROL
+   Large swatch = base tint, small center = emission.
+===================================== */
+.material-color-node { position: relative; overflow: visible; }
+.material-base-swatch {
+  position: absolute;
+  inset: 15%;
+  border-radius: 50%;
+  border: 2px solid #151515;
+  z-index: 2;
+  pointer-events: none;
+}
+.material-base-input {
+  position: absolute;
+  inset: 12%;
+  width: 76%;
+  height: 76%;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 4;
+  border-radius: 50%;
+}
+.material-emission-swatch {
+  position: absolute;
+  width: 27px;
+  height: 27px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px #141414, 0 0 7px #fff8;
+  z-index: 5;
+  overflow: hidden;
+}
+.material-emission-swatch input[type="color"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 6;
+}
+@media (max-width: 700px) {
+  .material-emission-swatch { width: 21px; height: 21px; }
+}
+
+
+/* =====================================
+   RESET MESH — TEXT ONLY, NO BOX
+   Existing click handler remounts the sculpt mesh.
+===================================== */
+.reset-mesh-button,
+.reset-mesh-button:hover,
+.reset-mesh-button:focus,
+.reset-mesh-button:active {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  color: #fff !important;
+}
+.reset-mesh-button {
+  padding: 0 4px;
+  height: auto;
+  min-height: 45px;
+  font-family: "DirtyStains", sans-serif;
+  font-size: 16px;
+  letter-spacing: 1px;
+  text-shadow: 0 0 5px rgba(255,255,255,.45);
+}
+.reset-mesh-button svg {
+  color: #fff;
+  stroke: #fff;
+}
+.reset-mesh-button:hover {
+  text-shadow: 0 0 9px rgba(255,255,255,.8);
+}
+.reset-mesh-button:focus-visible {
+  outline: 2px solid white;
+  outline-offset: 5px;
+}
+
+/* Individual scribble buttons use independent cycle durations and
+   negative phase offsets supplied by ScribbleRing. */
+.scribble-ring {
+  animation-duration: var(--scribble-duration, 35s);
+  animation-delay: var(--scribble-delay, 0s);
+}
+
+/* =====================================
+   SKOLPT? — LARGE BACKGROUND TITLE
+   Above WebGL/background, below every HTML control.
+===================================== */
+.site-title {
+  position: absolute;
+  top: 24px;
+  left: 34px;
+  z-index: 0;
+  margin: 0;
+  padding: 0;
+  font-family: "DirtyStains", sans-serif;
+  font-size: clamp(72px, 11vw, 210px);
+  font-weight: 400;
+  line-height: .9;
+  letter-spacing: -.025em;
+  color: #fff;
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+}
+
+/* Black stays on .website. The WebGL scene has transparent pixels,
+   so the DOM lettering shows through wherever no 3D mesh is drawn. */
+.sculpt-scene-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+.sculpt-scene-layer canvas {
+  display: block;
+  background: transparent !important;
+}
+
+
+/* Draw icon supports vertical size and horizontal pointiness dragging. */
+.draw-button { cursor: move; }
+
+@media (max-width: 700px) {
+  .site-title {
+    top: 18px;
+    left: 14px;
+    font-size: clamp(52px, 12vw, 90px);
+  }
+}
+
+
+/* =====================================
+   DRAW STATUS — ON / OFF
+   Sits immediately beside the Draw tool.
+===================================== */
+.tool-wrapper:has(> .draw-button) .draw-status {
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 16px);
+  transform: translateY(-50%);
+  z-index: 4;
+  pointer-events: auto;
+  user-select: none;
+  cursor: pointer;
+  padding: 5px 3px;
+  border: 0;
+  background: transparent;
+  appearance: none;
+  box-shadow: none;
+  color: #fff;
+  font-family: "DirtyStains", sans-serif;
+  font-size: 20px;
+  line-height: 1;
+  letter-spacing: .06em;
+  text-shadow: 0 0 5px rgba(255,255,255,.45);
+  transition: text-shadow .2s ease, opacity .2s ease;
+}
+.tool-wrapper:has(> .draw-button) .draw-status.is-on {
+  text-shadow: 0 0 5px rgba(255,255,255,.75), 0 0 13px rgba(255,255,255,.38);
+}
+@media (max-width: 700px) {
+  .tool-wrapper:has(> .draw-button) .draw-status {
+    left: calc(100% + 9px);
+    font-size: 15px;
+  }
+}
+
+/* Text is the sole sculpting ON/OFF control. */
+.tool-wrapper:has(> .draw-button) .draw-status:hover {
+  transform: translateY(-50%) scale(1.14);
+  text-shadow: 0 0 8px #fff, 0 0 18px rgba(255,255,255,.65);
+}
+.tool-wrapper:has(> .draw-button) .draw-status:focus-visible {
+  outline: 1px solid #fff;
+  outline-offset: 4px;
+}
+
+/* Background photograph: copy your image to public/background.jpg.
+   Same cover positioning is used by the WebGL refraction shader. */
+.website {
+  background-color: #000;
+  background-image: url('/background.jpg');
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+}
