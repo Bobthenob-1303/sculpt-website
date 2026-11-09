@@ -1,5 +1,6 @@
-import { useRef, useEffect, useMemo } from "react";
+import { useRef, useEffect, useLayoutEffect, useMemo } from "react";
 import * as THREE from "three";
+import { useThree } from "@react-three/fiber";
 import GlassBackdropRefraction from "./GlassBackdropRefraction";
 
 // Preserve the brush strength that is working in the current project.
@@ -7,6 +8,12 @@ const STRENGTH_SCALE = 1.0;
 
 // Undo history: only added setting.
 const MAX_UNDO_STEPS = 25;
+
+// Physical thickness: 0.01 keeps the original sculpted surface unchanged.
+// At the slider maximum (5), the outer shell extends 0.5 scene units outward.
+const THICKNESS_MIN = 0.01;
+const THICKNESS_MAX = 5;
+const THICKNESS_MAX_OFFSET = 0.5;
 
 export default function SculptMesh({
   drawEnabled,
@@ -17,6 +24,7 @@ export default function SculptMesh({
   onMeshEnter,
   onMeshLeave,
 }) {
+  const invalidate = useThree((state) => state.invalidate);
   const meshRef = useRef(null);
   const sculpting = useRef(false);
   const brush = useRef({ brushSize, brushStrength, brushPointiness });
@@ -29,10 +37,41 @@ export default function SculptMesh({
 
   // The outer glass and inward-facing emission share this same sculpted geometry.
   const geometry = useMemo(() => new THREE.SphereGeometry(1.7, 256, 256), []);
+  // Outer shell is a separate surface, derived from the sculpted inner surface.
+  // The original geometry remains untouched for undo/redo and inner emission.
+  const outerGeometry = useMemo(() => geometry.clone(), [geometry]);
+  const thicknessOffset = THREE.MathUtils.clamp(
+    (material.thickness - THICKNESS_MIN) / (THICKNESS_MAX - THICKNESS_MIN), 0, 1
+  ) * THICKNESS_MAX_OFFSET;
+
+  function syncOuterGeometry(offset) {
+    const innerPositions = geometry.attributes.position;
+    const innerNormals = geometry.attributes.normal;
+    const outerPositions = outerGeometry.attributes.position;
+    for (let i = 0; i < innerPositions.count; i++) {
+      outerPositions.setXYZ(
+        i,
+        innerPositions.getX(i) + innerNormals.getX(i) * offset,
+        innerPositions.getY(i) + innerNormals.getY(i) * offset,
+        innerPositions.getZ(i) + innerNormals.getZ(i) * offset
+      );
+    }
+    outerPositions.needsUpdate = true;
+    outerGeometry.computeVertexNormals();
+    outerGeometry.computeBoundingSphere();
+    outerGeometry.computeBoundingBox();
+  }
+
+  // Keep the shell in sync immediately when Thickness changes, regardless
+  // of whether Glass is adjusted before or after it.
+  useLayoutEffect(() => {
+    syncOuterGeometry(thicknessOffset);
+    invalidate();
+  }, [geometry, outerGeometry, thicknessOffset, invalidate]);
 
   useEffect(() => {
-    return () => geometry.dispose();
-  }, [geometry]);
+    return () => { geometry.dispose(); outerGeometry.dispose(); };
+  }, [geometry, outerGeometry]);
 
   useEffect(() => {
     brush.current = { brushSize, brushStrength, brushPointiness };
@@ -46,6 +85,7 @@ export default function SculptMesh({
     geometry.computeVertexNormals();
     geometry.computeBoundingSphere();
     geometry.computeBoundingBox();
+    syncOuterGeometry(thicknessOffset);
   }
 
   // Added: keyboard shortcuts; leave native undo in editable fields intact.
@@ -68,7 +108,7 @@ export default function SculptMesh({
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [geometry]);
+  }, [geometry, outerGeometry, thicknessOffset]);
 
   const glass = THREE.MathUtils.clamp(material.transmission, 0, 1);
   // At full glass the surface itself becomes nearly invisible. A separate
@@ -147,6 +187,10 @@ export default function SculptMesh({
     } = brush.current;
 
     const center = mesh.worldToLocal(event.point.clone());
+    // Pointer hits the expanded outer shell; map the brush to the sculpted base.
+    if (thicknessOffset > 0) {
+      center.addScaledVector(center.clone().normalize(), -thicknessOffset);
+    }
     const positions = geometry.attributes.position;
     const falloffPower = 0.7 + pointiness * 3.0;
     const inverse = Boolean(event.sourceEvent?.shiftKey ?? event.shiftKey);
@@ -174,6 +218,7 @@ export default function SculptMesh({
       geometry.computeVertexNormals();
       geometry.computeBoundingSphere();
       geometry.computeBoundingBox();
+      syncOuterGeometry(thicknessOffset);
     }
   }
 
@@ -208,7 +253,7 @@ export default function SculptMesh({
     <group>
       <mesh
         ref={meshRef}
-        geometry={geometry}
+        geometry={outerGeometry}
         dispose={null}
         onPointerOver={() => onMeshEnter?.()}
         onPointerOut={() => onMeshLeave?.()}
@@ -245,7 +290,7 @@ export default function SculptMesh({
       {/* Image-space refraction of the CSS background. Uses the same geometry
           so sculpting, dents, and distortions track the mesh in real time. */}
       <GlassBackdropRefraction
-        geometry={geometry}
+        geometry={outerGeometry}
         glass={glass}
         ior={material.ior}
         thickness={material.thickness}
@@ -253,12 +298,28 @@ export default function SculptMesh({
 
       {rimOpacity > 0 && (
         <mesh
-          geometry={geometry}
+          geometry={outerGeometry}
           material={rimMaterial}
           dispose={null}
           raycast={() => null}
           renderOrder={2}
         />
+      )}
+
+      {/* The original sculpted surface becomes the inward-facing wall when
+          thickness is increased. At 0.01 this wall is not rendered. */}
+      {thicknessOffset > 0 && emission <= 0 && (
+        <mesh geometry={geometry} dispose={null} raycast={() => null}>
+          <meshPhysicalMaterial
+            side={THREE.BackSide}
+            color={material.color}
+            roughness={material.roughness}
+            metalness={material.metalness * (1 - glass)}
+            transparent={glass > 0}
+            opacity={outerOpacity}
+            depthWrite={glass < 0.01}
+          />
+        </mesh>
       )}
 
       {/* Render only the INSIDE of the exact same deformed surface.

@@ -52,7 +52,7 @@ const MATERIAL_DEFAULTS = {
   clearcoatRoughness: 0.2,
   transmission: 0,
   ior: 1.5,
-  thickness: 1,
+  thickness: 0.01,
   emissive: "#ffffff",
   emissiveIntensity: 0,
 };
@@ -65,7 +65,7 @@ const MATERIAL_SLIDERS = [
   ["clearcoatRoughness", "Coat Roughness", 0, 1],
   ["transmission", "Glass", 0, 1],
   ["ior", "Refraction", 1, 2.33],
-  ["thickness", "Thickness", 0, 5],
+  ["thickness", "Thickness", 0.01, 5],
   ["emissiveIntensity", "Emission", 0, 5],
 ];
 
