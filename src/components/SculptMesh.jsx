@@ -2,9 +2,10 @@ import { useRef, useEffect, useLayoutEffect, useMemo } from "react";
 import * as THREE from "three";
 import { useThree } from "@react-three/fiber";
 import GlassBackdropRefraction from "./GlassBackdropRefraction";
+import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 
 // Preserve the brush strength that is working in the current project.
-const STRENGTH_SCALE = 1.0;
+const STRENGTH_SCALE = 0.001; // Strength 1-10 maps to 0.001-0.010 deformation
 
 // Undo history: only added setting.
 const MAX_UNDO_STEPS = 25;
@@ -27,6 +28,7 @@ export default function SculptMesh({
   const invalidate = useThree((state) => state.invalidate);
   const meshRef = useRef(null);
   const sculpting = useRef(false);
+  const sculptPointerId = useRef(null);
   const brush = useRef({ brushSize, brushStrength, brushPointiness });
   const vertex = useRef(new THREE.Vector3());
   const normal = useRef(new THREE.Vector3());
@@ -36,7 +38,23 @@ export default function SculptMesh({
   const redoHistory = useRef([]);
 
   // The outer glass and inward-facing emission share this same sculpted geometry.
-  const geometry = useMemo(() => new THREE.SphereGeometry(1.7, 256, 256), []);
+  const geometry = useMemo(() => {
+  let g = new THREE.SphereGeometry(1.7, 256, 256);
+
+  // Remove attributes that prevent seam welding
+  g.deleteAttribute("uv");
+  g.deleteAttribute("normal");
+
+  // Weld seam + pole duplicates
+  g = mergeVertices(g);
+
+  // Rebuild normals after merging
+  g.computeVertexNormals();
+  g.computeBoundingSphere();
+  g.computeBoundingBox();
+
+  return g;
+}, []);
   // Outer shell is a separate surface, derived from the sculpted inner surface.
   // The original geometry remains untouched for undo/redo and inner emission.
   const outerGeometry = useMemo(() => geometry.clone(), [geometry]);
@@ -223,27 +241,29 @@ export default function SculptMesh({
   }
 
   function down(event) {
-    if (!drawEnabled || event.button !== 0) return;
+    if (!drawEnabled || sculpting.current || (event.pointerType !== "touch" && event.button !== 0)) return;
     event.stopPropagation();
     // Added: save one undo state at the beginning of each brush stroke.
     undoHistory.current.push(geometry.attributes.position.array.slice());
     if (undoHistory.current.length > MAX_UNDO_STEPS) undoHistory.current.shift();
     redoHistory.current = [];
     sculpting.current = true;
+    sculptPointerId.current = event.pointerId;
     event.target.setPointerCapture(event.pointerId);
     sculpt(event);
   }
 
   function move(event) {
-    if (!drawEnabled || !sculpting.current) return;
+    if (!drawEnabled || !sculpting.current || sculptPointerId.current !== event.pointerId) return;
     event.stopPropagation();
     sculpt(event);
   }
 
   function end(event) {
-    if (!sculpting.current) return;
+    if (!sculpting.current || sculptPointerId.current !== event.pointerId) return;
     event.stopPropagation();
     sculpting.current = false;
+    sculptPointerId.current = null;
     if (event.target.hasPointerCapture(event.pointerId)) {
       event.target.releasePointerCapture(event.pointerId);
     }

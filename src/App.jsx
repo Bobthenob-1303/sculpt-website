@@ -19,6 +19,7 @@ import {
 } from "./components/ScribbleUI";
 
 import "./App.css";
+import "./mobile.css";
 
 // ============================================================================
 // EDITABLE SETTINGS — CHANGE VALUES HERE
@@ -29,19 +30,19 @@ import "./App.css";
 const BRUSH = {
   enabled: false,
   size: 0.4,
-  strength: 0.002,
+  strength: 2, // 1-10 UI; 2 maps to the old 0.002 deformation
   pointiness: 0.5,
   sizeMin: 0.1,
   sizeMax: 1.2,
-  strengthMin: 0.00001,
-  strengthMax: 0.01,
+  strengthMin: 1,
+  strengthMax: 10,
   pointinessMin: 0,
   pointinessMax: 1,
   iconScaleBase: 0.4,
   iconScaleRange: 0.65,
   dragThresholdPx: 4,
-  pointinessDragPx: 180, // move this many pixels for full pointiness range
-  sizeDragPx: 220,       // move this many pixels for +1 brush size
+  sizeDragPx: 220,       // horizontal drag: pixels per +1 brush size
+  strengthDragPx: 45,    // vertical drag: pixels per strength point
 };
 
 const MATERIAL_DEFAULTS = {
@@ -315,6 +316,8 @@ export default function App() {
   const brushDrag = useRef(null);
   const brushPointinessRef = useRef(brushPointiness);
   const brushSizeRef = useRef(brushSize);
+  const brushStrengthRef = useRef(brushStrength);
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
   const hoverTimer = useRef(null);
   const activeDragCleanup = useRef(null);
 
@@ -436,13 +439,20 @@ export default function App() {
 
   useEffect(() => () => activeDragCleanup.current?.(), []);
 
-  const hubVisible =
-    meshHovered || hubHovered || showLights;
+  useEffect(() => {
+    const media = window.matchMedia("(pointer: coarse)");
+    const update = () => setIsTouchDevice(media.matches);
+    update();
+    media.addEventListener?.("change", update);
+    return () => media.removeEventListener?.("change", update);
+  }, []);
+
+  const hubVisible = meshHovered || hubHovered || showLights || isTouchDevice;
 
   // ====================================
   // DRAW ICON TWO-AXIS DRAG
-  // Horizontal: pointiness. Vertical: size (up = larger, down = smaller).
-  // Clicking the icon only opens brush settings; ON/OFF text toggles drawing.
+  // Horizontal: brush size. Vertical: brush strength (1-10).
+  // Pointiness is adjustable ONLY in the expanded brush settings.
   // ====================================
 
   function startBrushDrag(event) {
@@ -454,7 +464,7 @@ export default function App() {
     const pointerId = event.pointerId;
     const xStart = event.clientX;
     const yStart = event.clientY;
-    const initialPointiness = brushPointinessRef.current;
+    const initialStrength = brushStrengthRef.current;
     const initialSize = brushSizeRef.current;
     let moved = false;
 
@@ -465,17 +475,17 @@ export default function App() {
       if (!moved && Math.hypot(dx, dy) < BRUSH.dragThresholdPx) return;
       moved = true;
 
-      const nextPointiness = THREE.MathUtils.clamp(
-        initialPointiness + dx / BRUSH.pointinessDragPx, BRUSH.pointinessMin, BRUSH.pointinessMax
-      );
       const nextSize = THREE.MathUtils.clamp(
-        initialSize - dy / BRUSH.sizeDragPx, BRUSH.sizeMin, BRUSH.sizeMax
+        initialSize + dx / BRUSH.sizeDragPx, BRUSH.sizeMin, BRUSH.sizeMax
+      );
+      const nextStrength = THREE.MathUtils.clamp(
+        Math.round(initialStrength - dy / BRUSH.strengthDragPx), BRUSH.strengthMin, BRUSH.strengthMax
       );
 
-      brushPointinessRef.current = nextPointiness;
       brushSizeRef.current = nextSize;
-      setBrushPointiness(nextPointiness);
+      brushStrengthRef.current = nextStrength;
       setBrushSize(nextSize);
+      setBrushStrength(nextStrength);
     }
 
     function stop(e) {
@@ -605,6 +615,7 @@ export default function App() {
           sculpted mesh to obscure the letters naturally. */}
       <div className="sculpt-scene-layer">
       <Canvas
+        dpr={isTouchDevice ? [1, 1.5] : undefined}
         camera={{
           position: CAMERA.position,
           fov: CAMERA.fov,
@@ -652,6 +663,10 @@ export default function App() {
 
         <OrbitControls
           enablePan={CAMERA.enablePan}
+          touches={{
+            ONE: drawEnabled ? -1 : THREE.TOUCH.ROTATE,
+            TWO: THREE.TOUCH.DOLLY_ROTATE,
+          }}
           mouseButtons={{
             LEFT: drawEnabled
               ? -1
@@ -853,7 +868,7 @@ export default function App() {
             }`}
             aria-label="Brush settings"
             aria-expanded={openPanel === "draw"}
-            title={`Size: ${brushSize.toFixed(2)} (drag up/down) | Pointiness: ${brushPointiness.toFixed(2)} (drag left/right)`}
+            title={`Size: ${brushSize.toFixed(2)} (drag left/right) | Strength: ${brushStrength} (drag up/down) | Pointiness: open brush settings`}
             onPointerDown={startBrushDrag}
             onClick={clickDraw}
           >
@@ -879,7 +894,7 @@ export default function App() {
             aria-pressed={drawEnabled}
             title={`Click to turn sculpting ${drawEnabled ? "off" : "on"}`}
           >
-            {drawEnabled ? "ON" : "OFF"}
+            {drawEnabled ? "DRAWING ENABLED" : "DRAWING DISABLED"}
           </button>
 
           {openPanel === "draw" && (
@@ -906,7 +921,7 @@ export default function App() {
                       value={brushStrength}
                       min={BRUSH.strengthMin}
                       max={BRUSH.strengthMax}
-                      onChange={setBrushStrength}
+                      onChange={(value) => { const next = Math.round(value); brushStrengthRef.current = next; setBrushStrength(next); }}
                     />
                   ),
                 },
